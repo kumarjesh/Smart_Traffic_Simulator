@@ -1,0 +1,7 @@
+<viewsettings>
+    <scheme name="real world"/>
+    <delay value="20"/>
+    <viewport zoom="450" x="0" y="0"/>
+    <vehicles vehicleColor="color" vehicleSize="1.5" showBlinker="true"/>
+    <junctions showLinkBlits="true" drawLinkJunctionIndex="false"/>
+</viewsettings>

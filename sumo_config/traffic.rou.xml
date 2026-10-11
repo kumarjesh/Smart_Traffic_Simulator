@@ -1,0 +1,62 @@
+<routes>
+    <!-- Indian Traffic Vehicle Types (Strict Physical Collision Avoidance & Headway) -->
+    <!-- 1. Passenger Cars -->
+    <vType id="passenger" accel="2.6" decel="4.5" sigma="0.3" length="4.2" minGap="2.5" tau="1.2" maxSpeed="13.89" color="1.0,0.8,0.2" guiShape="passenger"/>
+
+    <!-- 2. Auto-Rickshaws (Agile & Free-Flowing) -->
+    <vType id="autorickshaw" accel="2.2" decel="4.0" sigma="0.4" length="2.8" minGap="1.8" tau="1.0" maxSpeed="11.11" color="0.1,0.9,0.4" guiShape="delivery"/>
+
+    <!-- 3. Emergency Vehicle (Ambulance with Blue Siren) -->
+    <vType id="ambulance" accel="3.8" decel="6.0" sigma="0.1" length="6.2" minGap="2.0" tau="1.0" maxSpeed="20.0" color="1.0,0.1,0.1" guiShape="emergency" vClass="emergency">
+        <param key="has.bluelight.device" value="true"/>
+    </vType>
+
+    <!-- 4. Public Transit (City Bus - 11.5m) -->
+    <vType id="bus" accel="1.8" decel="3.5" sigma="0.2" length="11.5" minGap="3.0" tau="1.4" maxSpeed="11.11" color="0.2,0.6,1.0" guiShape="bus" vClass="bus"/>
+
+    <!-- Routes for 3-Lane Indian 4-Way Junction -->
+    <!-- North Incoming (LHD) -->
+    <route id="r_N_E" edges="N2C C2E"/> <!-- Dedicated Free Left Slip Lane (Lane 0) -->
+    <route id="r_N_S" edges="N2C C2S"/> <!-- Through (Lanes 1, 2) -->
+    <route id="r_N_W" edges="N2C C2W"/> <!-- Right Turn (Lane 2) -->
+
+    <!-- South Incoming (LHD) -->
+    <route id="r_S_W" edges="S2C C2W"/> <!-- Dedicated Free Left Slip Lane (Lane 0) -->
+    <route id="r_S_N" edges="S2C C2N"/> <!-- Through (Lanes 1, 2) -->
+    <route id="r_S_E" edges="S2C C2E"/> <!-- Right Turn (Lane 2) -->
+
+    <!-- East Incoming (LHD) -->
+    <route id="r_E_S" edges="E2C C2S"/> <!-- Dedicated Free Left Slip Lane (Lane 0) -->
+    <route id="r_E_W" edges="E2C C2W"/> <!-- Through (Lanes 1, 2) -->
+    <route id="r_E_N" edges="E2C C2N"/> <!-- Right Turn (Lane 2) -->
+
+    <!-- West Incoming (LHD) -->
+    <route id="r_W_N" edges="W2C C2N"/> <!-- Dedicated Free Left Slip Lane (Lane 0) -->
+    <route id="r_W_E" edges="W2C C2E"/> <!-- Through (Lanes 1, 2) -->
+    <route id="r_W_S" edges="W2C C2S"/> <!-- Right Turn (Lane 2) -->
+
+    <!-- Balanced Realistic Continuous Flows -->
+    <flow id="flow_NS_straight" type="passenger" route="r_N_S" begin="0" end="3600" probability="0.04"/>
+    <flow id="flow_NS_left" type="autorickshaw" route="r_N_E" begin="0" end="3600" probability="0.03"/>
+    <flow id="flow_NS_right" type="passenger" route="r_N_W" begin="0" end="3600" probability="0.015"/>
+
+    <flow id="flow_SN_straight" type="passenger" route="r_S_N" begin="0" end="3600" probability="0.04"/>
+    <flow id="flow_SN_left" type="autorickshaw" route="r_S_W" begin="0" end="3600" probability="0.03"/>
+    <flow id="flow_SN_right" type="passenger" route="r_S_E" begin="0" end="3600" probability="0.015"/>
+
+    <flow id="flow_EW_straight" type="passenger" route="r_E_W" begin="0" end="3600" probability="0.035"/>
+    <flow id="flow_EW_left" type="autorickshaw" route="r_E_S" begin="0" end="3600" probability="0.025"/>
+    <flow id="flow_EW_right" type="passenger" route="r_E_N" begin="0" end="3600" probability="0.015"/>
+
+    <flow id="flow_WE_straight" type="passenger" route="r_W_E" begin="0" end="3600" probability="0.035"/>
+    <flow id="flow_WE_left" type="autorickshaw" route="r_W_N" begin="0" end="3600" probability="0.025"/>
+    <flow id="flow_WE_right" type="passenger" route="r_W_S" begin="0" end="3600" probability="0.015"/>
+
+    <!-- Chronologically Sorted Scheduled Vehicles -->
+    <vehicle id="bus_NS_1" type="bus" route="r_N_S" depart="25" color="0.2,0.6,1.0"/>
+    <vehicle id="ambulance_demo_1" type="ambulance" route="r_N_S" depart="40" color="1.0,0.1,0.1"/>
+    <vehicle id="bus_EW_1" type="bus" route="r_E_W" depart="60" color="0.2,0.6,1.0"/>
+    <vehicle id="ambulance_demo_2" type="ambulance" route="r_E_W" depart="85" color="1.0,0.1,0.1"/>
+    <vehicle id="bus_SN_1" type="bus" route="r_S_N" depart="110" color="0.2,0.6,1.0"/>
+    <vehicle id="bus_WE_1" type="bus" route="r_W_E" depart="140" color="0.2,0.6,1.0"/>
+</routes>

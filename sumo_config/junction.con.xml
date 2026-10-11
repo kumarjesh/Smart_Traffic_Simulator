@@ -1,0 +1,25 @@
+<connections>
+    <!-- From North (LHD) -->
+    <connection from="N2C" to="C2E" fromLane="0" toLane="0" keepClear="true"/>
+    <connection from="N2C" to="C2S" fromLane="1" toLane="1" keepClear="true"/>
+    <connection from="N2C" to="C2S" fromLane="2" toLane="2" keepClear="true"/>
+    <connection from="N2C" to="C2W" fromLane="2" toLane="2" keepClear="true"/>
+
+    <!-- From South (LHD) -->
+    <connection from="S2C" to="C2W" fromLane="0" toLane="0" keepClear="true"/>
+    <connection from="S2C" to="C2N" fromLane="1" toLane="1" keepClear="true"/>
+    <connection from="S2C" to="C2N" fromLane="2" toLane="2" keepClear="true"/>
+    <connection from="S2C" to="C2E" fromLane="2" toLane="2" keepClear="true"/>
+
+    <!-- From East (LHD) -->
+    <connection from="E2C" to="C2S" fromLane="0" toLane="0" keepClear="true"/>
+    <connection from="E2C" to="C2W" fromLane="1" toLane="1" keepClear="true"/>
+    <connection from="E2C" to="C2W" fromLane="2" toLane="2" keepClear="true"/>
+    <connection from="E2C" to="C2N" fromLane="2" toLane="2" keepClear="true"/>
+
+    <!-- From West (LHD) -->
+    <connection from="W2C" to="C2N" fromLane="0" toLane="0" keepClear="true"/>
+    <connection from="W2C" to="C2E" fromLane="1" toLane="1" keepClear="true"/>
+    <connection from="W2C" to="C2E" fromLane="2" toLane="2" keepClear="true"/>
+    <connection from="W2C" to="C2S" fromLane="2" toLane="2" keepClear="true"/>
+</connections>

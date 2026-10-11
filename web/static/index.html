@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Traffic Junction Simulation - Indian LHD</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Header Navigation & Status -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo-badge">
+                    <span class="pulse-dot"></span>
+                    <span class="brand-title">TRAFFIC-AI / INTELLISIGNAL</span>
+                </div>
+                <div class="system-tag">🇮🇳 INDIAN LHD 4-WAY JUNCTION (FREE LEFT TURNS)</div>
+            </div>
+
+            <div class="header-center">
+                <div class="sim-clock-card">
+                    <span class="clock-label">SIMULATION TIME</span>
+                    <span class="clock-value" id="sim-clock">00:00.0</span>
+                </div>
+                <div class="active-count-card">
+                    <span class="clock-label">ACTIVE VEHICLES</span>
+                    <span class="count-value" id="veh-count">0</span>
+                </div>
+                <div class="active-count-card free-left-card">
+                    <span class="clock-label">INDIAN RULE</span>
+                    <span class="free-left-value">🟢 FREE LEFT TURN</span>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <button id="btn-pause" class="btn btn-secondary">⏸ Pause</button>
+                <button id="btn-speed" class="btn btn-secondary">⚡ 1x Speed</button>
+            </div>
+        </header>
+
+        <!-- 4 Feature Telemetry Status Ribbons -->
+        <section class="features-bar">
+            <!-- Feature 1: Emergency Preemption -->
+            <div class="feature-card" id="card-preemption">
+                <div class="feature-header">
+                    <span class="feature-icon">🚨</span>
+                    <span class="feature-title">EMERGENCY PREEMPTION</span>
+                    <span class="badge badge-idle" id="badge-preemption">IDLE</span>
+                </div>
+                <div class="feature-body">
+                    <div class="metric-row">
+                        <span>Corridor Lock:</span>
+                        <strong id="preempt-corridor">None</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Active Unit:</span>
+                        <span id="preempt-unit">None</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 2: Transit Signal Priority -->
+            <div class="feature-card" id="card-tsp">
+                <div class="feature-header">
+                    <span class="feature-icon">🚌</span>
+                    <span class="feature-title">TRANSIT PRIORITY (TSP)</span>
+                    <span class="badge badge-idle" id="badge-tsp">IDLE</span>
+                </div>
+                <div class="feature-body">
+                    <div class="metric-row">
+                        <span>Priority Mode:</span>
+                        <strong id="tsp-mode">Monitoring (80m)</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Extension:</span>
+                        <span id="tsp-ext">+5.0s on demand</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 3: Radar/Thermal 100m Density -->
+            <div class="feature-card" id="card-radar">
+                <div class="feature-header">
+                    <span class="feature-icon">📡</span>
+                    <span class="feature-title">100M RADAR DENSITY</span>
+                    <span class="badge badge-active">CONTINUOUS SCAN</span>
+                </div>
+                <div class="feature-body">
+                    <div class="radar-density-bar">
+                        <div class="density-label-row">
+                            <span>Queues: <b id="ns-density-val">S:0 N:0</b> <b id="ew-density-val">E:0 W:0</b></span>
+                            <span>Active: <span id="ew-green-val" style="color:var(--signal-green); font-weight:700;">SOUTH</span> (<span id="ns-green-val">12.0s</span>)</span>
+                        </div>
+                        <div class="density-meter-track">
+                            <div class="density-meter-fill" id="ns-density-fill" style="width: 50%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 4: Predictive Weather Integration -->
+            <div class="feature-card" id="card-weather">
+                <div class="feature-header">
+                    <span class="feature-icon" id="weather-icon">☀️</span>
+                    <span class="feature-title">PREDICTIVE WEATHER</span>
+                    <span class="badge badge-clear" id="badge-weather">CLEAR</span>
+                </div>
+                <div class="feature-body">
+                    <div class="metric-row">
+                        <span>Speed Limit:</span>
+                        <strong id="weather-speed">50 km/h</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Yellow Buffer:</span>
+                        <span id="weather-yellow">3.0s (Normal)</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Workspace Area -->
+        <main class="main-content">
+            <!-- Left: Simulation Canvas (Full-Width Responsive 4-way Intersection Map) -->
+            <div class="viewport-panel">
+                <div class="canvas-header">
+                    <div class="view-title">
+                        <span>📍 LIVE INTERSECTION TELEMETRY</span>
+                    </div>
+                    
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" onclick="zoomIn()" title="Zoom In">🔍 +</button>
+                        <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out">🔍 -</button>
+                        <button class="zoom-btn" onclick="resetZoom()" title="Reset View">⟲ Center</button>
+                    </div>
+
+                    <div class="signal-indicator">
+                        <span>PHASE: </span>
+                        <span class="signal-badge" id="signal-phase-badge">NS GREEN</span>
+                        <span class="phase-timer-badge" id="signal-timer-badge">0.0s / 15.0s</span>
+                    </div>
+                </div>
+
+                <div class="canvas-wrapper" id="canvas-wrapper">
+                    <canvas id="traffic-canvas"></canvas>
+                    
+                    <!-- Top-Right Compass HUD Overlay -->
+                    <div class="compass-hud">
+                        <div class="compass-circle">
+                            <div class="compass-dir dir-n">N</div>
+                            <div class="compass-dir dir-s">S</div>
+                            <div class="compass-dir dir-w">W</div>
+                            <div class="compass-dir dir-e">E</div>
+                            <div class="compass-needle"></div>
+                            <div class="compass-hub"></div>
+                        </div>
+                    </div>
+
+                    <!-- Vehicle Tooltip Overlay -->
+                    <div id="veh-tooltip" class="veh-tooltip" style="display: none;"></div>
+
+                    <!-- Canvas Legend Overlay -->
+                    <div class="canvas-legend">
+                        <div class="legend-item"><span class="legend-dot dot-car"></span> Car</div>
+                        <div class="legend-item"><span class="legend-dot dot-auto"></span> Auto-Rickshaw</div>
+                        <div class="legend-item"><span class="legend-dot dot-bus"></span> Bus (TSP)</div>
+                        <div class="legend-item"><span class="legend-dot dot-amb"></span> Ambulance (Preempt)</div>
+                        <div class="legend-item"><span class="legend-box box-radar"></span> 100m Radar Zone</div>
+                        <div class="legend-item"><span class="legend-arrow">↩</span> Free Left Turn</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Interactive Control Center & Event Logs -->
+            <aside class="sidebar-panel">
+                <!-- Interactive Action Controls -->
+                <div class="panel-section">
+                    <h3 class="section-heading">🎮 INTERACTIVE TRIGGER CONTROLS</h3>
+                    
+                    <!-- Emergency Ambulance Spawner -->
+                    <div class="control-box">
+                        <div class="control-box-header">
+                            <span class="box-icon">🚨</span>
+                            <strong>Dispatch Ambulance (Test Preemption)</strong>
+                        </div>
+                        <p class="control-desc">Injects emergency vehicle on approach lane to trigger immediate green corridor lock.</p>
+                        <div class="btn-grid">
+                            <button class="btn btn-dispatch" onclick="spawnVehicle('ambulance', 'North', 'South')">From North</button>
+                            <button class="btn btn-dispatch" onclick="spawnVehicle('ambulance', 'South', 'North')">From South</button>
+                            <button class="btn btn-dispatch" onclick="spawnVehicle('ambulance', 'East', 'West')">From East</button>
+                            <button class="btn btn-dispatch" onclick="spawnVehicle('ambulance', 'West', 'East')">From West</button>
+                        </div>
+                    </div>
+
+                    <!-- Transit Bus Spawner -->
+                    <div class="control-box">
+                        <div class="control-box-header">
+                            <span class="box-icon">🚌</span>
+                            <strong>Inject Transit Bus (Test TSP +5s)</strong>
+                        </div>
+                        <p class="control-desc">Triggers dynamic green extension (+5s) / red reduction on approach.</p>
+                        <div class="btn-grid">
+                            <button class="btn btn-bus" onclick="spawnVehicle('bus', 'North', 'South')">Bus (North -> South)</button>
+                            <button class="btn btn-bus" onclick="spawnVehicle('bus', 'East', 'West')">Bus (East -> West)</button>
+                        </div>
+                    </div>
+
+                    <!-- Weather Toggle -->
+                    <div class="control-box">
+                        <div class="control-box-header">
+                            <span class="box-icon">🌧️</span>
+                            <strong>Predictive Weather Toggle</strong>
+                        </div>
+                        <p class="control-desc">Toggles Heavy Rain (+2s yellow clearance buffer & speed limit reduced to 35 km/h).</p>
+                        <button id="btn-toggle-weather" class="btn btn-weather" onclick="toggleWeather()">
+                            🌧️ Activate Heavy Rain (+2s Yellow)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live System Event Log Stream -->
+                <div class="panel-section log-section">
+                    <div class="log-header">
+                        <h3 class="section-heading">📜 REAL-TIME EVENT STREAM</h3>
+                        <button class="btn-clear" onclick="clearLogs()">Clear</button>
+                    </div>
+                    <div class="log-stream" id="log-container">
+                        <!-- Dynamic log items inserted here -->
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

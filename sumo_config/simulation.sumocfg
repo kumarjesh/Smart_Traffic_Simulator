@@ -1,0 +1,22 @@
+<configuration>
+    <input>
+        <net-file value="junction.net.xml"/>
+        <route-files value="traffic.rou.xml"/>
+        <gui-settings-file value="viewsettings.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <step-length value="0.2"/>
+    </time>
+    <processing>
+        <!-- Enforce strict collision checking so vehicles NEVER drive over each other -->
+        <collision.action value="warn"/>
+        <collision.check-junctions value="true"/>
+        <collision.mingap-factor value="0.5"/>
+        <time-to-teleport value="30"/>
+    </processing>
+    <report>
+        <verbose value="false"/>
+        <no-step-log value="true"/>
+    </report>
+</configuration>
