@@ -36,8 +36,14 @@ async def simulation_loop():
                 try:
                     controller.step()
                 except Exception as e:
-                    print(f"[SIM ERROR] {e}")
-                    break
+                    print(f"[SIM ERROR] {e}. Auto-restarting simulation...")
+                    try:
+                        controller.stop()
+                        controller.start()
+                    except Exception as err:
+                        print(f"[RESTART ERROR] {err}")
+                    await asyncio.sleep(1.0)
+                    continue
 
                 # Broadcast state to all connected websocket clients
                 state = controller.get_simulation_state()
@@ -132,6 +138,10 @@ async def websocket_endpoint(websocket: WebSocket):
             elif action == "set_speed":
                 global sim_speed
                 sim_speed = float(cmd.get("speed", 1.0))
+            elif action == "restart":
+                if controller:
+                    controller.stop()
+                    controller.start()
     except WebSocketDisconnect:
         connected_clients.discard(websocket)
     except Exception as e:
@@ -157,6 +167,15 @@ async def api_spawn(req: SpawnRequest):
     if controller:
         vid = controller.inject_vehicle(req.vtype, req.origin, req.destination)
         return {"status": "ok", "vehicle_id": vid}
+    return {"error": "controller not initialized"}
+
+@app.post("/api/restart")
+async def api_restart():
+    global controller
+    if controller:
+        controller.stop()
+        controller.start()
+        return {"status": "ok", "message": "Simulation restarted"}
     return {"error": "controller not initialized"}
 
 if __name__ == "__main__":

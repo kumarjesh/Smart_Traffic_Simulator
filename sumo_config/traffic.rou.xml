@@ -35,22 +35,22 @@
     <route id="r_W_E" edges="W2C C2E"/> <!-- Through (Lanes 1, 2) -->
     <route id="r_W_S" edges="W2C C2S"/> <!-- Right Turn (Lane 2) -->
 
-    <!-- Balanced Realistic Continuous Flows -->
-    <flow id="flow_NS_straight" type="passenger" route="r_N_S" begin="0" end="3600" probability="0.04"/>
-    <flow id="flow_NS_left" type="autorickshaw" route="r_N_E" begin="0" end="3600" probability="0.03"/>
-    <flow id="flow_NS_right" type="passenger" route="r_N_W" begin="0" end="3600" probability="0.015"/>
+    <!-- Balanced Realistic Continuous Flows (24-Hour Continuous) -->
+    <flow id="flow_NS_straight" type="passenger" route="r_N_S" begin="0" end="86400" probability="0.04"/>
+    <flow id="flow_NS_left" type="autorickshaw" route="r_N_E" begin="0" end="86400" probability="0.03"/>
+    <flow id="flow_NS_right" type="passenger" route="r_N_W" begin="0" end="86400" probability="0.015"/>
 
-    <flow id="flow_SN_straight" type="passenger" route="r_S_N" begin="0" end="3600" probability="0.04"/>
-    <flow id="flow_SN_left" type="autorickshaw" route="r_S_W" begin="0" end="3600" probability="0.03"/>
-    <flow id="flow_SN_right" type="passenger" route="r_S_E" begin="0" end="3600" probability="0.015"/>
+    <flow id="flow_SN_straight" type="passenger" route="r_S_N" begin="0" end="86400" probability="0.04"/>
+    <flow id="flow_SN_left" type="autorickshaw" route="r_S_W" begin="0" end="86400" probability="0.03"/>
+    <flow id="flow_SN_right" type="passenger" route="r_S_E" begin="0" end="86400" probability="0.015"/>
 
-    <flow id="flow_EW_straight" type="passenger" route="r_E_W" begin="0" end="3600" probability="0.035"/>
-    <flow id="flow_EW_left" type="autorickshaw" route="r_E_S" begin="0" end="3600" probability="0.025"/>
-    <flow id="flow_EW_right" type="passenger" route="r_E_N" begin="0" end="3600" probability="0.015"/>
+    <flow id="flow_EW_straight" type="passenger" route="r_E_W" begin="0" end="86400" probability="0.035"/>
+    <flow id="flow_EW_left" type="autorickshaw" route="r_E_S" begin="0" end="86400" probability="0.025"/>
+    <flow id="flow_EW_right" type="passenger" route="r_E_N" begin="0" end="86400" probability="0.015"/>
 
-    <flow id="flow_WE_straight" type="passenger" route="r_W_E" begin="0" end="3600" probability="0.035"/>
-    <flow id="flow_WE_left" type="autorickshaw" route="r_W_N" begin="0" end="3600" probability="0.025"/>
-    <flow id="flow_WE_right" type="passenger" route="r_W_S" begin="0" end="3600" probability="0.015"/>
+    <flow id="flow_WE_straight" type="passenger" route="r_W_E" begin="0" end="86400" probability="0.035"/>
+    <flow id="flow_WE_left" type="autorickshaw" route="r_W_N" begin="0" end="86400" probability="0.025"/>
+    <flow id="flow_WE_right" type="passenger" route="r_W_S" begin="0" end="86400" probability="0.015"/>
 
     <!-- Chronologically Sorted Scheduled Vehicles -->
     <vehicle id="bus_NS_1" type="bus" route="r_N_S" depart="25" color="0.2,0.6,1.0"/>
