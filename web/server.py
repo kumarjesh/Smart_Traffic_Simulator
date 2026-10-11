@@ -94,6 +94,14 @@ async def get_index():
     index_file = os.path.join(WEB_DIR, "index.html")
     return FileResponse(index_file)
 
+@app.api_route("/style.css", methods=["GET", "HEAD"])
+async def get_style():
+    return FileResponse(os.path.join(WEB_DIR, "style.css"))
+
+@app.api_route("/app.js", methods=["GET", "HEAD"])
+async def get_script():
+    return FileResponse(os.path.join(WEB_DIR, "app.js"))
+
 @app.api_route("/healthz", methods=["GET", "HEAD"])
 async def healthz():
     return {"status": "ok"}

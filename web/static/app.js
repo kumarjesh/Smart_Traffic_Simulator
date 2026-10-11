@@ -59,38 +59,557 @@ const signalPhaseBadge = document.getElementById('signal-phase-badge');
 const signalTimerBadge = document.getElementById('signal-timer-badge');
 const logContainer = document.getElementById('log-container');
 
-// Connect WebSocket
-function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    ws = new WebSocket(wsUrl);
+// =========================================================================
+// Standalone Client-Side Simulation Engine (for Vercel & Offline Fallback)
+// =========================================================================
+class ClientTrafficSimulator {
+    constructor() {
+        this.simTime = 0.0;
+        this.phaseOrder = ["SOUTH", "NORTH", "EAST", "WEST"];
+        this.currentArmIdx = 0; // 0=SOUTH, 1=NORTH, 2=EAST, 3=WEST
+        this.phaseState = "GREEN"; // "GREEN", "YELLOW", "ALL_RED"
+        this.phaseTimer = 0.0;
+        this.targetGreen = 14.0;
+        this.yellowDuration = 3.0;
+        this.allRedDuration = 1.5;
 
-    ws.onopen = () => console.log('[WS] Connected to 3-Lane Indian LHD Simulation Server');
-    ws.onmessage = (event) => {
-        try {
-            latestState = JSON.parse(event.data);
+        this.preemptionActive = false;
+        this.preemptedCorridor = "None";
+        this.activeAmbulanceId = null;
+        this.preemptQueuedArm = null;
+
+        this.tspActive = false;
+        this.activeBuses = [];
+
+        this.heavyRain = false;
+        this.normalSpeed = 50.0; // km/h
+        this.rainSpeed = 35.0;   // km/h
+
+        this.radarDensity = { North: 0, South: 0, East: 0, West: 0, NS: 0, EW: 0 };
+        this.calculatedGreen = { North: 12.0, South: 14.0, East: 12.0, West: 12.0 };
+
+        this.vehicles = [];
+        this.logs = [];
+        this.seq = 100;
+        this.isPaused = false;
+        this.simSpeed = 1.0;
+        this.lastSpawnTime = 0;
+        this.timer = null;
+    }
+
+    start() {
+        if (this.timer) return;
+        this.logEvent("info", "🚀 Client Simulation Engine Active (100% Standalone Vercel Mode).");
+        this.logEvent("info", "🚦 4-Phase Isolated Signal Control active (1 Exclusive Green Arm at a time).");
+        this.logEvent("weather", "☀️ CLEAR / NORMAL WEATHER -> Speed: 50 km/h | Yellow Clearance: 3.0s (+2s rain buffer)");
+
+        this.seedInitialVehicles();
+
+        let lastTime = performance.now();
+        this.timer = setInterval(() => {
+            const now = performance.now();
+            const dtReal = (now - lastTime) / 1000.0;
+            lastTime = now;
+
+            if (!this.isPaused) {
+                const dtSim = Math.min(0.2, dtReal * this.simSpeed);
+                this.update(dtSim);
+            }
+
+            latestState = this.getState();
             updateDashboard(latestState);
-        } catch (e) {
-            console.error('[WS Parse Error]', e);
+        }, 50);
+    }
+
+    stop() {
+        if (this.timer) {
+            clearInterval(this.timer);
+            this.timer = null;
         }
-    };
-    ws.onclose = () => {
-        console.warn('[WS] Reconnecting in 2s...');
-        setTimeout(connectWebSocket, 2000);
-    };
+    }
+
+    logEvent(category, message, highlight = "info") {
+        const mins = Math.floor(this.simTime / 60);
+        const secs = (this.simTime % 60).toFixed(1);
+        const timestamp = `${mins.toString().padStart(2, '0')}:${secs.padStart(4, '0')}`;
+        const entry = {
+            time: timestamp,
+            category: category,
+            message: message,
+            highlight: highlight
+        };
+        this.logs.unshift(entry);
+        if (this.logs.length > 50) this.logs.pop();
+        renderLogs(this.logs);
+    }
+
+    getCurrentPhaseString() {
+        const arm = this.phaseOrder[this.currentArmIdx];
+        if (this.phaseState === "GREEN") return `${arm}_GREEN`;
+        if (this.phaseState === "YELLOW") return `${arm}_YELLOW`;
+        return "ALL_RED";
+    }
+
+    toggleWeather(enable) {
+        if (enable === undefined) this.heavyRain = !this.heavyRain;
+        else this.heavyRain = !!enable;
+
+        if (this.heavyRain) {
+            this.yellowDuration = 5.0;
+            this.logEvent("weather", "🌧️ HEAVY RAIN DETECTED: Reduced speed limit to 35 km/h. Yellow clearance extended by +2.0s.");
+        } else {
+            this.yellowDuration = 3.0;
+            this.logEvent("weather", "☀️ CLEAR / NORMAL WEATHER: Speed restored to 50 km/h. Yellow clearance: 3.0s.");
+        }
+    }
+
+    spawnVehicle(vtype = "ambulance", origin = "North", destination = "South") {
+        const arm = origin.toUpperCase();
+        this.seq++;
+        const id = `${vtype}_${this.seq}_${arm[0]}`;
+        
+        let lane = 1;
+        if (vtype === "autorickshaw") lane = Math.random() < 0.6 ? 0 : 1;
+        else if (vtype === "bus") lane = 1;
+        else if (vtype === "ambulance") lane = 1;
+        else lane = Math.random() < 0.3 ? 0 : (Math.random() < 0.6 ? 1 : 2);
+
+        const veh = this.createVehicle(id, vtype, arm, lane);
+        this.vehicles.push(veh);
+
+        if (vtype === "ambulance") {
+            this.logEvent("emergency", `🚨 [EMERGENCY] Incoming AMBULANCE injected on ${origin} approach! Activating automated preemption.`);
+            this.triggerEmergencyPreemption(arm, id);
+        } else if (vtype === "bus") {
+            this.logEvent("tsp", `🚌 Public Transit Bus dispatched on ${origin} corridor (TSP monitoring enabled).`);
+        }
+        return id;
+    }
+
+    triggerEmergencyPreemption(arm, ambId) {
+        this.preemptionActive = true;
+        this.preemptedCorridor = arm;
+        this.activeAmbulanceId = ambId;
+
+        const currentArm = this.phaseOrder[this.currentArmIdx];
+        if (currentArm === arm && this.phaseState === "GREEN") {
+            this.logEvent("emergency", `🚨 [EMERGENCY] Active corridor matches incoming ambulance on ${arm}! Holding GREEN.`);
+        } else {
+            this.preemptQueuedArm = arm;
+            if (this.phaseState === "GREEN") {
+                this.phaseState = "YELLOW";
+                this.phaseTimer = 0.0;
+                this.logEvent("emergency", `🚨 [EMERGENCY] Preempting ${currentArm} -> Switching to YELLOW clearance buffer.`);
+            }
+        }
+    }
+
+    createVehicle(id, type, arm, lane) {
+        let x = 250, y = 250, angle = 0, speed = this.heavyRain ? this.rainSpeed : this.normalSpeed;
+        const offset = (lane === 0) ? -6.4 : ((lane === 1) ? -3.2 : 0);
+
+        if (arm === "SOUTH") {
+            x = 248.4 + offset;
+            y = 20.0;
+            angle = 0;
+        } else if (arm === "NORTH") {
+            x = 251.6 - offset;
+            y = 480.0;
+            angle = 180;
+        } else if (arm === "EAST") {
+            x = 480.0;
+            y = 248.4 + offset;
+            angle = 270;
+        } else if (arm === "WEST") {
+            x = 20.0;
+            y = 251.6 - offset;
+            angle = 90;
+        }
+
+        return {
+            id: id,
+            type: type,
+            arm: arm,
+            lane: lane,
+            x: x,
+            y: y,
+            angle: angle,
+            speed: (speed * (0.85 + Math.random() * 0.15)),
+            currentSpeed: (speed * 1000) / 3600,
+            targetSpeed: (speed * 1000) / 3600,
+            passedStopline: false,
+            inJunction: false,
+            turned: false
+        };
+    }
+
+    seedInitialVehicles() {
+        const arms = ["SOUTH", "NORTH", "EAST", "WEST"];
+        arms.forEach(arm => {
+            for (let l = 0; l < 3; l++) {
+                this.seq++;
+                const vtype = (l === 0 && Math.random() < 0.5) ? "autorickshaw" : (Math.random() < 0.2 ? "bus" : "passenger");
+                const v = this.createVehicle(`init_${this.seq}`, vtype, arm, l);
+                const dist = 60.0 + Math.random() * 80.0;
+                if (arm === "SOUTH") v.y = 215.4 - dist;
+                else if (arm === "NORTH") v.y = 284.6 + dist;
+                else if (arm === "EAST") v.x = 284.6 + dist;
+                else if (arm === "WEST") v.x = 215.4 - dist;
+                this.vehicles.push(v);
+            }
+        });
+    }
+
+    update(dt) {
+        this.simTime += dt;
+        this.phaseTimer += dt;
+
+        this.updateSignals(dt);
+
+        if (this.simTime - this.lastSpawnTime > (this.heavyRain ? 2.2 : 1.5)) {
+            this.lastSpawnTime = this.simTime;
+            const arm = this.phaseOrder[Math.floor(Math.random() * 4)];
+            const r = Math.random();
+            let vtype = "passenger";
+            if (r < 0.25) vtype = "autorickshaw";
+            else if (r < 0.35) vtype = "bus";
+            else if (r < 0.37 && !this.preemptionActive) vtype = "ambulance";
+
+            let lane = Math.floor(Math.random() * 3);
+            if (vtype === "ambulance" || vtype === "bus") lane = 1;
+
+            this.seq++;
+            const id = `${vtype}_${this.seq}_${arm[0]}`;
+            const veh = this.createVehicle(id, vtype, arm, lane);
+            this.vehicles.push(veh);
+
+            if (vtype === "ambulance") {
+                this.logEvent("emergency", `🚨 [EMERGENCY] Incoming AMBULANCE detected within 140m on ${arm}! Activating preemption.`);
+                this.triggerEmergencyPreemption(arm, id);
+            }
+        }
+
+        this.updateVehicles(dt);
+        this.updateRadarDensity();
+        this.updateTSP();
+    }
+
+    updateSignals(dt) {
+        const currentArm = this.phaseOrder[this.currentArmIdx];
+
+        if (this.phaseState === "GREEN") {
+            if (this.preemptionActive && this.preemptedCorridor === currentArm) {
+                return; // Hold green for ambulance
+            }
+
+            if (this.phaseTimer >= this.targetGreen) {
+                this.phaseState = "YELLOW";
+                this.phaseTimer = 0.0;
+                this.logEvent("radar", `[RADAR] ${currentArm} Green completed. Switching to ${currentArm} YELLOW (${this.yellowDuration.toFixed(1)}s).`);
+            }
+        } else if (this.phaseState === "YELLOW") {
+            if (this.phaseTimer >= this.yellowDuration) {
+                this.phaseState = "ALL_RED";
+                this.phaseTimer = 0.0;
+                this.logEvent("info", `[INFO] ALL-RED Clearance Interval (${this.allRedDuration}s) -> Flushing intersection before next arm.`);
+            }
+        } else if (this.phaseState === "ALL_RED") {
+            if (this.phaseTimer >= this.allRedDuration) {
+                if (this.preemptQueuedArm) {
+                    this.currentArmIdx = this.phaseOrder.indexOf(this.preemptQueuedArm);
+                    this.preemptQueuedArm = null;
+                } else {
+                    this.currentArmIdx = (this.currentArmIdx + 1) % this.phaseOrder.length;
+                }
+
+                this.phaseState = "GREEN";
+                this.phaseTimer = 0.0;
+                const nextArm = this.phaseOrder[this.currentArmIdx];
+                const armKey = nextArm.charAt(0) + nextArm.slice(1).toLowerCase();
+                this.targetGreen = this.calculatedGreen[armKey] || 14.0;
+                this.logEvent("radar", `[RADAR] ${nextArm} Arm Signal -> GREEN for ${this.targetGreen.toFixed(1)}s (Density split).`);
+            }
+        }
+    }
+
+    updateVehicles(dt) {
+        const currentArm = this.phaseOrder[this.currentArmIdx];
+        const isArmGreen = (this.phaseState === "GREEN");
+        const isArmYellow = (this.phaseState === "YELLOW");
+        const speedLimit = this.heavyRain ? this.rainSpeed : this.normalSpeed;
+        const speedMps = (speedLimit * 1000) / 3600;
+
+        for (let i = this.vehicles.length - 1; i >= 0; i--) {
+            const v = this.vehicles[i];
+            const isArmActive = (v.arm === currentArm);
+            let canPass = false;
+
+            if (v.lane === 0) {
+                canPass = true; // Indian Free Left slip lane
+            } else if (isArmActive && isArmGreen) {
+                canPass = true;
+            }
+
+            let distToStop = 999;
+            if (v.arm === "SOUTH") distToStop = 215.4 - v.y;
+            else if (v.arm === "NORTH") distToStop = v.y - 284.6;
+            else if (v.arm === "EAST") distToStop = v.x - 284.6;
+            else if (v.arm === "WEST") distToStop = 215.4 - v.x;
+
+            if (distToStop <= 0) {
+                v.passedStopline = true;
+                canPass = true;
+            }
+
+            if (isArmActive && isArmYellow && distToStop > 0 && distToStop < 14) {
+                canPass = true;
+            }
+
+            let minGap = 999;
+            for (let j = 0; j < this.vehicles.length; j++) {
+                if (i === j) continue;
+                const other = this.vehicles[j];
+                if (other.arm === v.arm && other.lane === v.lane && !v.passedStopline) {
+                    let d = 999;
+                    if (v.arm === "SOUTH" && other.y > v.y) d = other.y - v.y;
+                    else if (v.arm === "NORTH" && other.y < v.y) d = v.y - other.y;
+                    else if (v.arm === "EAST" && other.x < v.x) d = v.x - other.x;
+                    else if (v.arm === "WEST" && other.x > v.x) d = other.x - v.x;
+                    if (d < minGap) minGap = d;
+                }
+            }
+
+            let desiredMps = speedMps;
+            if (v.type === "ambulance") desiredMps *= 1.35;
+            else if (v.type === "autorickshaw") desiredMps *= 0.85;
+
+            if (!canPass && distToStop > 0 && distToStop < 45) {
+                desiredMps = Math.min(desiredMps, Math.max(0, distToStop * 0.45));
+            }
+            if (minGap < 18) {
+                desiredMps = Math.min(desiredMps, Math.max(0, (minGap - 8) * 0.5));
+            }
+
+            const accel = 8.0 * dt;
+            if (v.currentSpeed < desiredMps) v.currentSpeed = Math.min(desiredMps, v.currentSpeed + accel);
+            else v.currentSpeed = Math.max(desiredMps, v.currentSpeed - accel * 1.5);
+
+            v.speed = Math.round((v.currentSpeed * 3600) / 1000);
+
+            const stepDist = v.currentSpeed * dt;
+
+            if (v.arm === "SOUTH") {
+                if (v.lane === 0 && v.y >= 215.0 && !v.turned) {
+                    v.x -= stepDist; v.angle = 270;
+                    if (v.x < 215.4) v.turned = true;
+                } else if (v.turned) {
+                    v.x -= stepDist;
+                } else {
+                    v.y += stepDist;
+                }
+            } else if (v.arm === "NORTH") {
+                if (v.lane === 0 && v.y <= 285.0 && !v.turned) {
+                    v.x += stepDist; v.angle = 90;
+                    if (v.x > 284.6) v.turned = true;
+                } else if (v.turned) {
+                    v.x += stepDist;
+                } else {
+                    v.y -= stepDist;
+                }
+            } else if (v.arm === "EAST") {
+                if (v.lane === 0 && v.x <= 285.0 && !v.turned) {
+                    v.y -= stepDist; v.angle = 180;
+                    if (v.y < 215.4) v.turned = true;
+                } else if (v.turned) {
+                    v.y -= stepDist;
+                } else {
+                    v.x -= stepDist;
+                }
+            } else if (v.arm === "WEST") {
+                if (v.lane === 0 && v.x >= 215.0 && !v.turned) {
+                    v.y += stepDist; v.angle = 0;
+                    if (v.y > 284.6) v.turned = true;
+                } else if (v.turned) {
+                    v.y += stepDist;
+                } else {
+                    v.x += stepDist;
+                }
+            }
+
+            if (v.type === "ambulance" && v.id === this.activeAmbulanceId && v.passedStopline) {
+                let distPast = 0;
+                if (v.arm === "SOUTH") distPast = v.y - 250;
+                else if (v.arm === "NORTH") distPast = 250 - v.y;
+                else if (v.arm === "EAST") distPast = 250 - v.x;
+                else if (v.arm === "WEST") distPast = v.x - 250;
+
+                if (distPast > 35) {
+                    this.logEvent("emergency", `🚑 Ambulance cleared intersection. Resuming adaptive signal phasing.`);
+                    this.preemptionActive = false;
+                    this.preemptedCorridor = "None";
+                    this.activeAmbulanceId = null;
+                }
+            }
+
+            if (v.x < -40 || v.x > 540 || v.y < -40 || v.y > 540) {
+                this.vehicles.splice(i, 1);
+            }
+        }
+    }
+
+    updateRadarDensity() {
+        const counts = { North: 0, South: 0, East: 0, West: 0 };
+        this.vehicles.forEach(v => {
+            if (v.passedStopline) return;
+            if (v.arm === "SOUTH" && v.y >= 115.4 && v.y <= 215.4) counts.South++;
+            else if (v.arm === "NORTH" && v.y >= 284.6 && v.y <= 384.6) counts.North++;
+            else if (v.arm === "EAST" && v.x >= 284.6 && v.x <= 384.6) counts.East++;
+            else if (v.arm === "WEST" && v.x >= 115.4 && v.x <= 215.4) counts.West++;
+        });
+
+        this.radarDensity = {
+            North: counts.North,
+            South: counts.South,
+            East: counts.East,
+            West: counts.West,
+            NS: counts.North + counts.South,
+            EW: counts.East + counts.West
+        };
+
+        const total = Math.max(1, counts.North + counts.South + counts.East + counts.West);
+        for (const arm of ["North", "South", "East", "West"]) {
+            const ratio = counts[arm] / total;
+            this.calculatedGreen[arm] = Math.round((8.0 + 14.0 * Math.min(1.0, ratio * 2.5)) * 10) / 10;
+        }
+    }
+
+    updateTSP() {
+        const currentArm = this.phaseOrder[this.currentArmIdx];
+        const activeBuses = [];
+
+        this.vehicles.forEach(v => {
+            if (v.type === "bus" && !v.passedStopline) {
+                let dist = 999;
+                if (v.arm === "SOUTH") dist = 215.4 - v.y;
+                else if (v.arm === "NORTH") dist = v.y - 284.6;
+                else if (v.arm === "EAST") dist = v.x - 284.6;
+                else if (v.arm === "WEST") dist = 215.4 - v.x;
+
+                if (dist > 0 && dist <= 80) {
+                    activeBuses.push(v.id);
+                    if (v.arm === currentArm && this.phaseState === "GREEN") {
+                        if (this.targetGreen - this.phaseTimer < 4.0 && !v.tspGranted) {
+                            v.tspGranted = true;
+                            this.targetGreen += 5.0;
+                            this.logEvent("tsp", `🚌 Approaching Transit Bus detected within 80m on ${v.arm}. Extending green light by +5.0s.`);
+                        }
+                    }
+                }
+            }
+        });
+
+        this.tspActive = (activeBuses.length > 0);
+        this.activeBuses = activeBuses;
+    }
+
+    getState() {
+        return {
+            sim_time: Math.round(this.simTime * 10) / 10,
+            vehicle_count: this.vehicles.length,
+            current_phase: this.getCurrentPhaseString(),
+            phase_timer: Math.round(this.phaseTimer * 10) / 10,
+            target_green: this.targetGreen,
+            yellow_duration: this.yellowDuration,
+            preemption_active: this.preemptionActive,
+            preempted_corridor: this.preemptedCorridor,
+            active_ambulance_id: this.activeAmbulanceId,
+            tsp_active: this.tspActive,
+            active_buses: this.activeBuses,
+            heavy_rain: this.heavyRain,
+            radar_density: this.radarDensity,
+            calculated_green: this.calculatedGreen,
+            vehicles: this.vehicles.map(v => ({
+                id: v.id,
+                type: v.type,
+                x: Math.round(v.x * 10) / 10,
+                y: Math.round(v.y * 10) / 10,
+                angle: v.angle,
+                speed: v.speed,
+                edge: `${v.arm[0]}2C`
+            })),
+            recent_logs: this.logs.slice(0, 15)
+        };
+    }
 }
 
-// User Actions
+let clientSim = null;
+let isClientSim = false;
+
+function startClientSimulation() {
+    if (!clientSim) {
+        clientSim = new ClientTrafficSimulator();
+        isClientSim = true;
+        clientSim.start();
+    }
+}
+
+// Connect WebSocket with Automatic Client Simulator Fallback
+function connectWebSocket() {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    // When running on Vercel or cloud static hosting without active local Python, start client simulation immediately
+    if (!isLocal) {
+        startClientSimulation();
+        return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+            console.log('[WS] Connected to TraCI Simulation Server');
+            if (clientSim) {
+                clientSim.stop();
+                clientSim = null;
+                isClientSim = false;
+            }
+        };
+        ws.onmessage = (event) => {
+            try {
+                latestState = JSON.parse(event.data);
+                updateDashboard(latestState);
+            } catch (e) {
+                console.error('[WS Parse Error]', e);
+            }
+        };
+        ws.onerror = () => {
+            startClientSimulation();
+        };
+        ws.onclose = () => {
+            startClientSimulation();
+        };
+    } catch (e) {
+        startClientSimulation();
+    }
+}
+
+// User Actions (Routes to either WebSocket or Client Engine)
 function toggleWeather() {
     rainActive = !rainActive;
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ action: 'toggle_weather', heavy_rain: rainActive }));
+    } else if (clientSim) {
+        clientSim.toggleWeather(rainActive);
     }
 }
 
 function spawnVehicle(vtype, origin, destination) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ action: 'spawn_vehicle', vtype: vtype, origin: origin, destination: destination }));
+    } else if (clientSim) {
+        clientSim.spawnVehicle(vtype, origin, destination);
     }
 }
 
@@ -99,6 +618,8 @@ btnPause.addEventListener('click', () => {
     btnPause.innerText = isPaused ? '▶ Resume' : '⏸ Pause';
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ action: 'pause_resume' }));
+    } else if (clientSim) {
+        clientSim.isPaused = isPaused;
     }
 });
 
@@ -109,15 +630,28 @@ btnSpeed.addEventListener('click', () => {
     btnSpeed.innerText = `⚡ ${currentSpeed}x Speed`;
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ action: 'set_speed', speed: currentSpeed }));
+    } else if (clientSim) {
+        clientSim.simSpeed = currentSpeed;
     }
 });
 
-function clearLogs() { logContainer.innerHTML = ''; }
+function clearLogs() {
+    logContainer.innerHTML = '';
+    if (clientSim) clientSim.logs = [];
+}
 
 // Zoom & Pan Functions
 function zoomIn() { zoomLevel = Math.min(8.0, zoomLevel * 1.3); }
 function zoomOut() { zoomLevel = Math.max(1.0, zoomLevel / 1.3); }
 function resetZoom() { zoomLevel = 1.75; panOffset = { x: 0, y: 0 }; }
+
+// Expose handlers globally for HTML inline onclick
+window.toggleWeather = toggleWeather;
+window.spawnVehicle = spawnVehicle;
+window.clearLogs = clearLogs;
+window.zoomIn = zoomIn;
+window.zoomOut = zoomOut;
+window.resetZoom = resetZoom;
 
 // Canvas Mouse Drag & Wheel
 canvas.addEventListener('wheel', (e) => {
