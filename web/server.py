@@ -29,10 +29,10 @@ sim_speed = 1.0 # Multiplier
 
 async def simulation_loop():
     global controller, is_paused, sim_speed
-    print("[SERVER] Starting TraCI simulation loop...")
+    print("[SERVER] TraCI simulation loop ready (on-demand mode).")
     while True:
         if controller and controller.is_running:
-            if not is_paused:
+            if not is_paused and connected_clients:
                 try:
                     controller.step()
                 except Exception as e:
@@ -40,21 +40,23 @@ async def simulation_loop():
                     break
 
                 # Broadcast state to all connected websocket clients
-                if connected_clients:
-                    state = controller.get_simulation_state()
-                    state_json = json.dumps(state)
-                    disconnected = set()
-                    for ws in connected_clients:
-                        try:
-                            await ws.send_text(state_json)
-                        except Exception:
-                            disconnected.add(ws)
-                    for ws in disconnected:
-                        connected_clients.remove(ws)
+                state = controller.get_simulation_state()
+                state_json = json.dumps(state)
+                disconnected = set()
+                for ws in list(connected_clients):
+                    try:
+                        await ws.send_text(state_json)
+                    except Exception:
+                        disconnected.add(ws)
+                for ws in disconnected:
+                    connected_clients.discard(ws)
 
-            # Delay to throttle loop based on simulation step length and speed
-            step_delay = max(0.01, (controller.step_length / sim_speed))
-            await asyncio.sleep(step_delay)
+                # Delay to throttle loop based on simulation step length and speed
+                step_delay = max(0.01, (controller.step_length / sim_speed))
+                await asyncio.sleep(step_delay)
+            else:
+                # Idle sleeping when no browsers are connected to save CPU & RAM on Free tier
+                await asyncio.sleep(0.5)
         else:
             await asyncio.sleep(0.5)
 
@@ -78,10 +80,14 @@ app = FastAPI(title="Smart Traffic Management System", lifespan=lifespan)
 os.makedirs(WEB_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def get_index():
     index_file = os.path.join(WEB_DIR, "index.html")
     return FileResponse(index_file)
+
+@app.api_route("/healthz", methods=["GET", "HEAD"])
+async def healthz():
+    return {"status": "ok"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
