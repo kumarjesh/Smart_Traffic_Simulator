@@ -60,15 +60,24 @@ async def simulation_loop():
         else:
             await asyncio.sleep(0.5)
 
+async def init_controller():
+    global controller, sim_task
+    print("[SERVER] Initializing SmartTrafficController in background...")
+    try:
+        controller = SmartTrafficController(SUMOCFG_PATH, use_gui=False, step_length=0.2)
+        controller.start()
+        print("[SERVER] SmartTrafficController initialized successfully.")
+        sim_task = asyncio.create_task(simulation_loop())
+    except Exception as e:
+        print(f"[SERVER ERROR] Failed to start controller: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global controller, sim_task
-    # Startup
-    controller = SmartTrafficController(SUMOCFG_PATH, use_gui=False, step_length=0.2)
-    controller.start()
-    sim_task = asyncio.create_task(simulation_loop())
+    # Initialize controller in background so HTTP health checks respond immediately (0s delay)
+    asyncio.create_task(init_controller())
     yield
     # Shutdown
+    global sim_task, controller
     if sim_task:
         sim_task.cancel()
     if controller:

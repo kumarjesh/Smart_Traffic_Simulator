@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV SUMO_HOME=/usr/share/sumo
 ENV PATH="${SUMO_HOME}/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
+ENV MALLOC_ARENA_MAX=2
 
 WORKDIR /app
 

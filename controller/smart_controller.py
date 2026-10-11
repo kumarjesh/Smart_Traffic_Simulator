@@ -119,14 +119,20 @@ class SmartTrafficController:
 
     def start(self):
         binary = sumolib.checkBinary("sumo-gui" if self.use_gui else "sumo")
+        port = 8813
         sumo_cmd = [
             binary,
             "-c", self.sumocfg_path,
             "--step-length", str(self.step_length),
             "--start", "true",
-            "--quit-on-end", "true"
+            "--quit-on-end", "true",
+            "--xml-validation", "never",
+            "--no-warnings", "true",
+            "--no-step-log", "true",
+            "--threads", "1",
+            "--device.rerouting.threads", "1"
         ]
-        traci.start(sumo_cmd)
+        traci.start(sumo_cmd, port=port, numRetries=25)
         self.is_running = True
         self.apply_weather_settings(initial=True)
         self.set_tls_phase("SOUTH_GREEN")
